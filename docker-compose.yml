@@ -1,0 +1,67 @@
+version: "3"
+
+services:
+
+  # gitlab server, access via http://localhost:10080
+  gitlab:
+    restart: always
+    image: gitlab/gitlab-ce
+    ports:
+      - "10080:80"
+      - "10022:22"
+    networks:
+      - gitlab
+    volumes:
+      - git-data:/home/git/data
+      - ./gitlab.rb:/etc/gitlab/gitlab.rb
+    environment:
+      - GITLAB_HTTPS=false
+      - SSL_SELF_SIGNED=false
+      - GITLAB_HOST=localhost
+      - GITLAB_PORT=80
+      - GITLAB_SSH_PORT=22
+      - GITLAB_SHARED_RUNNERS_REGISTRATION_TOKEN=abc123
+      - GITLAB_ROOT_PASSWORD=password
+
+  # this runner is for running shell scripts, only within the container
+  gitlab-runner-shell:
+    restart: unless-stopped
+    image: gitlab/gitlab-runner
+    depends_on:
+      - gitlab
+    networks:
+      - gitlab
+    volumes:
+      - ./gitlab-runner-entrypoint.sh:/entrypoint
+    environment:
+      - GITLAB_SERVER=gitlab
+      - GITLAB_SHARED_RUNNERS_REGISTRATION_TOKEN=abc123
+      - RUNNER_LIMIT=0
+      - RUNNER_REQUEST_CONCURRENCY=2
+      - RUNNER_EXECUTOR=shell
+
+  # this runner will run container-based CI jobs on your docker daemon
+  gitlab-runner-docker:
+    restart: unless-stopped
+    image: gitlab/gitlab-runner
+    privileged: true
+    depends_on:
+      - gitlab
+    networks:
+      - gitlab
+    volumes:
+      - ./gitlab-runner-entrypoint.sh:/entrypoint
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - GITLAB_SERVER=gitlab
+      - GITLAB_SHARED_RUNNERS_REGISTRATION_TOKEN=abc123
+      - RUNNER_LIMIT=0
+      - RUNNER_REQUEST_CONCURRENCY=2
+      - RUNNER_EXECUTOR=docker
+      - DOCKER_IMAGE=alpine
+
+networks:
+  gitlab:
+
+volumes:
+  git-data:
